@@ -1,0 +1,37 @@
+#!/usr/bin/env pwsh
+
+$config = $input | ConvertFrom-Json
+#region Get Parameters
+$VerbosePreference = $config.source.verbose
+$ErrorActionPreference = $config.source.error
+$ProgressPreference = "SilentlyContinue"
+$pipeline = $config.source.pipeline
+$job = $config.source.job
+$concourse = $config.source.concourse
+$user = $config.source.user
+$password = $config.source.password
+$state = $config.source.state
+#endregion
+
+
+Import-Module concourse
+
+$flyPath = Join-Path -Path . -ChildPath fly
+Get-FlyCLI -path $flyPath -url "$concourse/api/v1/cli?arch=amd64&platform=linux"
+
+Set-Alias -Name Invoke-Fly -Value $flyPath
+
+$concourseUrl = "$concourse"
+$secPass = ConvertTo-SecureString $password -AsPlainText -Force
+$creds = New-Object System.Management.Automation.PSCredential($user,$secPass)
+Register-Concourse -concourseUrl $concourseUrl -cred $creds
+
+$builds = Invoke-Fly -t devops builds  -j "$pipeline/$job" --json | ConvertFrom-Json
+$jobID = $builds | Where-Object{$_.status -eq $state} | Sort-Object id -Descending | Select-Object -First 1 -ExpandProperty name
+
+
+$response = @{
+    jobID = "$pipeline/$job $jobID"
+}
+
+return $($response | ConvertTo-Json -AsArray)

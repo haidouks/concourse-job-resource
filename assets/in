@@ -1,0 +1,42 @@
+#!/usr/bin/env pwsh
+
+$config = $input | ConvertFrom-Json
+$VerbosePreference = $config.source.verbose
+$ErrorActionPreference = $config.source.error
+$ProgressPreference = "SilentlyContinue"
+
+# Get concourse releated environment variables
+$concourseVars = Get-ChildItem env: | Where-Object{$_.Name -match "concourse" -or $_.Name -match "pipeline" -or $_.Name -match "build"} | Select-Object key,value
+
+# Create metadata file
+$metadataPath = Join-Path -Path $args[0] -ChildPath "metadata.json"
+New-Item -Path $metadataPath -ItemType File | Out-Null
+
+$metalist = New-Object System.Collections.ArrayList
+$i = 0
+while ($i -lt $concourseVars.Count) {
+    $metadata = @{}
+    $metadata.name = $concourseVars[$i].Key
+    $metadata.value = $concourseVars[$i].Value
+    $i++
+    $null = $metalist.add($metadata)
+}
+
+# Add triggering origin to metadata
+$metadata = @{}
+$metadata.name = "Origin"
+$metadata.value = $config.version.jobID
+$null = $metalist.add($metadata)
+$metadata = @{}
+
+# Create response
+$response = @{
+    version = $config.version
+    metadata = $metalist
+}
+
+# Save metadata to resource folder 
+$($metalist | ConvertTo-Json) > $metadataPath
+
+# Send response back to concourse
+return $($response | ConvertTo-Json -Depth 10)
